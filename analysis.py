@@ -49,7 +49,7 @@ def get_sentiment_analysis(ticker):
             return "Error: GEMINI_API_KEY environment variable not set."
 
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-pro')
+        model = genai.GenerativeModel('gemini-2.5-pro')
 
         prompt = f"""
         Perform a detailed sentiment analysis for the stock with ticker {ticker}.
