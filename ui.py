@@ -1,82 +1,95 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from analysis import TECH_STOCKS, get_stock_data, get_price_history, get_sentiment_analysis
+from analysis import (
+    TECH_STOCKS,
+    get_fundamental_data,
+    get_sentiment_analysis,
+    get_final_recommendation,
+    get_price_history
+)
 
 def display_ui():
     """
-    The main function to display the Streamlit UI.
+    The main function to display the Streamlit UI for the stock analysis tool.
     """
-    st.set_page_config(page_title="Stock Analysis Dashboard", layout="wide")
-
-    st.title("Tech Stock Analysis Dashboard")
+    st.set_page_config(page_title="Advanced Stock Analyzer", layout="wide")
 
     # --- Sidebar for stock selection ---
-    st.sidebar.header("Stock Selection")
-
-    # Allow user to select from the default list or add their own
-    all_stocks = sorted(list(set(TECH_STOCKS)))
-    selected_tickers = st.sidebar.multiselect(
-        "Select stocks from the list:",
-        options=all_stocks,
-        default=['AAPL', 'MSFT', 'GOOG']
+    st.sidebar.title("Stock Selection")
+    ticker = st.sidebar.selectbox(
+        "Select a stock to analyze:",
+        options=sorted(TECH_STOCKS)
     )
 
-    custom_ticker = st.sidebar.text_input("Or add a stock ticker (e.g., AMZN):")
-    if st.sidebar.button("Add Ticker") and custom_ticker:
-        if custom_ticker.upper() not in selected_tickers:
-            selected_tickers.append(custom_ticker.upper())
+    if ticker:
+        # --- Main Analysis Section ---
+        st.title(f"Analysis for {ticker}")
 
-    if not selected_tickers:
-        st.warning("Please select at least one stock ticker.")
-        return
+        # Perform all analysis
+        with st.spinner(f"Running full analysis for {ticker}..."):
+            fundamental_data = get_fundamental_data(ticker)
+            sentiment_status = get_sentiment_analysis(ticker)
+            final_recommendation = get_final_recommendation(
+                fundamental_data['Fundamental Status'],
+                sentiment_status
+            )
 
-    # --- Main content with tabs ---
-    tab1, tab2 = st.tabs(["Fundamental Analysis", "Sentiment Analysis"])
+        st.header(f"{fundamental_data['Company Name']}")
 
-    with tab1:
-        st.header("Fundamental Analysis")
+        # --- Display the Final Recommendation ---
+        st.subheader("Final Recommendation")
 
-        # Fetch and display fundamental data
-        with st.spinner("Fetching fundamental data..."):
-            fundamental_data = get_stock_data(selected_tickers)
+        # Color code the recommendation
+        if "BUY" in final_recommendation:
+            st.success(f"## {final_recommendation}")
+        elif "SELL" in final_recommendation:
+            st.error(f"## {final_recommendation}")
+        else:
+            st.warning(f"## {final_recommendation}")
 
-        st.subheader("Key Metrics")
-        st.dataframe(fundamental_data)
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric(label="Fundamental Status", value=fundamental_data['Fundamental Status'])
+        with col2:
+            st.metric(label="Sentiment Status", value=sentiment_status)
 
-        # --- Charts for Visualization ---
-        st.subheader("Visualizations")
+        st.markdown("---")
 
-        # Price History Line Chart
-        st.write("#### Stock Price History (Last Year)")
-        history_ticker = st.selectbox("Select stock for price history:", selected_tickers)
-        if history_ticker:
-            with st.spinner(f"Fetching price history for {history_ticker}..."):
-                price_history = get_price_history(history_ticker)
-            fig_price = px.line(price_history, x=price_history.index, y='Close', title=f"{history_ticker} Price History")
+        # --- Detailed Analysis Columns ---
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.subheader("Fundamental Analysis")
+            st.metric("Current Price", f"${fundamental_data['Current Price']:.2f}")
+            st.metric("Intrinsic Value (DCF)", f"${fundamental_data['Intrinsic Value (DCF)']:.2f}" if isinstance(fundamental_data['Intrinsic Value (DCF)'], float) else fundamental_data['Intrinsic Value (DCF)'])
+
+            with st.expander("DCF Model Assumptions"):
+                st.text(fundamental_data['DCF Details'])
+
+            st.subheader("Key Metrics")
+            st.text(f"Market Cap: {fundamental_data['Market Cap'] / 1e9:.2f}B")
+            st.text(f"P/E Ratio: {fundamental_data['P/E Ratio']:.2f}" if fundamental_data['P/E Ratio'] else "N/A")
+            st.text(f"P/B Ratio: {fundamental_data['P/B Ratio']:.2f}" if fundamental_data['P/B Ratio'] else "N/A")
+            st.text(f"Debt-to-Equity: {fundamental_data['Debt-to-Equity']:.2f}")
+            st.text(f"Current Ratio: {fundamental_data['Current Ratio']:.2f}")
+            st.text(f"Return on Equity (ROE): {fundamental_data['Return on Equity']:.2%}")
+            st.text(f"Free Cash Flow (TTM): {fundamental_data['Free Cash Flow'] / 1e9:.2f}B")
+
+        with col2:
+            st.subheader("Price History (Last 1 Year)")
+            price_history = get_price_history(ticker)
+            fig_price = px.line(price_history, x=price_history.index, y='Close')
+            fig_price.update_layout(title=f"{ticker} Daily Close Price", yaxis_title="Price (USD)")
             st.plotly_chart(fig_price, use_container_width=True)
 
-        # Market Cap Comparison Bar Chart
-        st.write("#### Market Cap Comparison")
-        if not fundamental_data.empty:
-            fig_market_cap = px.bar(fundamental_data, x='Ticker', y='Market Cap', title="Market Capitalization of Selected Stocks")
-            st.plotly_chart(fig_market_cap, use_container_width=True)
-
-    with tab2:
-        st.header("Sentiment Analysis")
-        st.info("This feature uses the Gemini API for deep research. Please be patient as it may take a moment.")
-
-        sentiment_ticker = st.selectbox("Select a stock for sentiment analysis:", selected_tickers)
-
-        if st.button(f"Analyze Sentiment for {sentiment_ticker}"):
-            with st.spinner(f"Performing sentiment analysis for {sentiment_ticker}..."):
-                sentiment_result = get_sentiment_analysis(sentiment_ticker)
-
-            st.subheader(f"Sentiment for {sentiment_ticker}")
-            st.write(sentiment_result)
+        # --- Disclaimer ---
+        st.markdown("---")
+        st.error(
+            "**DISCLAIMER:** This is an automated analysis for educational purposes only and NOT financial advice. "
+            "The recommendation is based on a simplified model and does not account for all market risks. "
+            "Consult a qualified financial advisor before making any investment decisions."
+        )
 
 if __name__ == '__main__':
-    # This file is intended to be run via the main.py script
-    # but you can run it directly for testing if you have Streamlit installed.
-    # To run: streamlit run ui.py
     display_ui()
